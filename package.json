@@ -5,6 +5,7 @@
   "dependencies": {
     "@line/bot-sdk": "^7.5.2",
     "@supabase/supabase-js": "^2.39.7",
-    "openai": "^4.21.0"
+    "openai": "^4.21.0",
+    "raw-body": "^2.5.2"
   }
 }
