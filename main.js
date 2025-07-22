@@ -1,24 +1,16 @@
-// main.js - 單檔整合版
 import { middleware, Client } from '@line/bot-sdk'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
+import getRawBody from 'raw-body'
 
-// 初始化 LINE 客戶端
 const client = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 })
 
-// 初始化 Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
-
-// 初始化 OpenAI
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-// 設定 Webhook API 路由
 export const config = {
   api: {
     bodyParser: false,
@@ -26,13 +18,22 @@ export const config = {
 }
 
 export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed')
+    return
+  }
+
+  const rawBody = await getRawBody(req)
+  const signature = req.headers['x-line-signature']
+
   const parser = middleware({ channelSecret: process.env.LINE_CHANNEL_SECRET })
-  parser(req, res, async () => {
-    const event = req.body.events?.[0]
+  parser({ ...req, rawBody }, res, async () => {
+    const body = JSON.parse(rawBody.toString())
+    const event = body.events?.[0]
     const userMessage = event?.message?.text
     const replyToken = event?.replyToken
 
-    if (!userMessage || !replyToken) return res.status(200).send("No valid message")
+    if (!userMessage || !replyToken) return res.status(200).send('No message')
 
     const systemPrompt = `你是亞鈺汽車的50年資深客服專員，擅長解決問題並能細緻拆解每個問題，態度積極且充滿溫度。你接下來會根據參考資料進行回答，請遵守以下規則：
 
@@ -59,7 +60,6 @@ export default async function handler(req, res) {
       extracted = {}
     }
 
-    // 如果是合法的條件，進行查詢
     const { brand, model, year } = extracted
     if (brand || model || year) {
       const { data } = await supabase
@@ -77,7 +77,6 @@ export default async function handler(req, res) {
       return res.status(200).send('OK')
     }
 
-    // fallback：問題不在參考資料中，照角色規則回應
     const fallback = completion.choices[0].message.content
     await client.replyMessage(replyToken, { type: 'text', text: fallback })
     res.status(200).send('OK')
